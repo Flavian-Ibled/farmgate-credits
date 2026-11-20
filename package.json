@@ -1,0 +1,48 @@
+{
+  "name": "farmgate-credits",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "scripts": {
+    "dev": "concurrently -k -n api,web \"tsx watch server/index.ts\" \"vite\"",
+    "api": "tsx server/index.ts",
+    "web": "vite",
+    "build": "vite build",
+    "db:reset": "tsx server/cli.ts reset",
+    "import:master": "tsx server/cli.ts import",
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@electric-sql/pglite": "^0.5.16",
+    "@hono/node-server": "^2.1.8",
+    "exceljs": "^4.4.0",
+    "fflate": "^0.8.3",
+    "hono": "^4.13.18",
+    "i18next": "^27.1.1",
+    "leaflet": "^1.9.4",
+    "pdfjs-dist": "^6.5.438",
+    "qrcode": "^1.5.4",
+    "react": "^19.3.1",
+    "react-dom": "^19.3.1",
+    "react-i18next": "^18.0.1",
+    "react-leaflet": "^5.0.0",
+    "react-router-dom": "^7.18.5",
+    "sharp": "^0.35.5"
+  },
+  "devDependencies": {
+    "@tailwindcss/vite": "^4.3.5",
+    "@types/leaflet": "^1.9.22",
+    "@types/node": "^26.6.6",
+    "@types/qrcode": "^1.5.6",
+    "@types/react": "^19.3.0",
+    "@types/react-dom": "^19.3.0",
+    "@vitejs/plugin-react": "^6.3.0",
+    "concurrently": "^10.0.7",
+    "tailwindcss": "^4.3.5",
+    "tsx": "^4.23.15",
+    "typescript": "^7.0.2",
+    "vite": "^8.3.8",
+    "vitest": "^5.1.0"
+  }
+}

@@ -1,0 +1,34 @@
+// Selection builder ("Proposition de sélection"): farms of the current filters ranked by score, with Excel export.
+import { useEffect, useMemo, useState } from 'react';
+import { Link, useSearchParams } from 'react-router-dom';
+import { useTranslation } from 'react-i18next';
+import { api, fmt, share } from '../api';
+
+export function ScoreBar({ v, max = 100, color = '#529a38' }: { v: number | null; max?: number; color?: string }) { return <span className="inline-flex items-center gap-1.5 align-middle"><span className="inline-block w-14 h-2 rounded bg-line overflow-hidden"><span className="block h-2" style={{ width: `${v == null ? 0 : Math.max(0, Math.min(100, (v / max) * 100))}%`, background: color }} /></span><span className="tabular-nums font-semibold">{v == null ? '—' : fmt(v, 0)}</span></span>; }
+export default function Ranking() {
+  const { t } = useTranslation(); const [sp] = useSearchParams(); const filters = useMemo(() => { try { return JSON.parse(sp.get('f') ?? '{}'); } catch { return {}; } }, [sp]);
+  const [sort, setSort] = useState('eau'), [minEau, setMinEau] = useState(''), [minBio, setMinBio] = useState(''), [target, setTarget] = useState(''), [r, setR] = useState<any>(null), [err, setErr] = useState(''), [me, setMe] = useState<any>(null);
+  const body = { filters, sort, min_eau: minEau === '' ? undefined : Number(minEau), min_bio: minBio === '' ? undefined : Number(minBio), volume_target: target === '' ? undefined : Number(target) };
+  useEffect(() => { setR(null); api('/public/ranking', body).then(setR).catch(e => setErr(e.message)); }, [JSON.stringify(body)]); useEffect(() => { api('/auth/me').then(setMe).catch(() => {}); }, []);
+  const xlsx = async () => { const x = await fetch('/api/public/ranking.xlsx', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) }); const a = document.createElement('a'); a.href = URL.createObjectURL(await x.blob()); a.download = 'farmgate_selection_scores.xlsx'; a.click(); URL.revokeObjectURL(a.href); };
+  const quote = async () => { const ids = r.rows.map((x: any) => x.id); const v = prompt(t('fo.quoteVol'), String(r.total.dispo)); if (!v) return; try { const q = await api('/funder/quotes', { filters: { ids }, volume_tco2e: v.replace(',', '.') }); setErr(t('fo.quoteDone', { ref: q.reference })); } catch (e: any) { setErr(e.message); } };
+  const inp = 'border border-line rounded px-2 py-1 text-sm bg-white w-24 block mt-1'; const two = (a: any[], d = 1, pc = false) => (a[0] == null ? '—' : `${pc ? share(a[0]) : fmt(a[0], d)} → ${a[1] == null ? '—' : pc ? share(a[1]) : fmt(a[1], d)}`);
+  return (
+    <div className="mx-auto max-w-[1500px] px-4 py-6">
+      <div className="flex flex-wrap items-end gap-3"><div className="mr-auto"><h1 className="text-2xl sm:text-3xl">{t('rk.title')}</h1><p className="text-sm mt-1 max-w-3xl">{t('rk.lead')} <Link className="underline" to={`/carte?${sp.toString()}`}>{t('rk.editFilters')}</Link></p></div>
+        <label className="text-xs font-medium">{t('rk.sort')}<select className={inp + ' !w-36'} value={sort} onChange={e => setSort(e.target.value)}><option value="eau">{t('rk.eau')}</option><option value="bio">{t('rk.bio')}</option><option value="dispo">{t('kpi.available')}</option></select></label>
+        <label className="text-xs font-medium">{t('rk.minEau')}<input type="number" min="0" max="100" className={inp} value={minEau} onChange={e => setMinEau(e.target.value)} /></label><label className="text-xs font-medium">{t('rk.minBio')}<input type="number" min="0" max="100" className={inp} value={minBio} onChange={e => setMinBio(e.target.value)} /></label>
+        <label className="text-xs font-medium">{t('rk.target')}<input type="number" min="0" className={inp + ' !w-28'} value={target} onChange={e => setTarget(e.target.value)} /></label>
+        <button className="btn-ghost" onClick={xlsx} disabled={!r}>{t('f.export')}</button>{me?.role?.startsWith('funder') && <button className="btn" onClick={quote} disabled={!r?.rows.length}>{t('fo.quote')}</button>}</div>
+      {err && <p role="alert" className="mt-2 text-sm font-medium">{err}</p>}
+      {!r ? <p className="mt-4">{t('loading')}</p> : <>
+        <p className="mt-3 text-sm tabular-nums" aria-live="polite"><strong>{fmt(r.total.farms)}</strong> {t('kpi.farms')} · <strong>{fmt(r.total.sau)}</strong> ha · <strong>{fmt(r.total.re_labelled)}</strong> tCO₂e · <strong>{fmt(r.total.dispo)}</strong> {t('kpi.available')} · {t('rk.eau')} <strong>{fmt(r.total.eau_mean, 1)}</strong> ({t('rk.wmean')})</p>
+        <div className="card mt-2 overflow-auto max-h-[70vh]"><table className="w-full text-sm"><thead className="sticky top-0 bg-white"><tr className="text-left border-b border-line">{['#', t('list.id'), t('f.project'), t('f.departement'), 'SAU', t('kpi.available'), t('rk.eau'), t('rk.bio'), t('rk.lix'), t('rk.irr'), 'IFT', t('rk.cover'), t('s.levers')].map(h => <th key={h} className="px-2 py-2 font-semibold whitespace-nowrap">{h}</th>)}</tr></thead>
+          <tbody>{r.rows.slice(0, 300).map((x: any) => <tr key={x.id} className="border-b border-line last:border-0"><td className="px-2 py-1 tabular-nums">{x.rank}</td><td className="px-2 font-medium"><Link className="underline" to={`/fermes/${x.id}`}>{x.id}</Link></td><td className="px-2 max-w-56 truncate">{x.project}</td><td className="px-2">{x.departement}</td><td className="px-2 tabular-nums">{fmt(x.sau)}</td><td className="px-2 tabular-nums">{fmt(x.dispo)}</td>
+            <td className="px-2 whitespace-nowrap"><ScoreBar v={x.eau} />{x.eau != null && x.eau_completeness < 0.99 && <span className="text-[10px] opacity-60 ml-1" title={t('rk.data')}>{share(x.eau_completeness)}</span>}</td><td className="px-2 whitespace-nowrap"><ScoreBar v={x.bio} color="#885104" />{x.bio_raw != null && <span className="text-[10px] opacity-60 ml-1" title={t('rk.data')}>{share(x.bio_completeness)}</span>}</td>
+            <td className="px-2 tabular-nums whitespace-nowrap">{two(x.lix)}</td><td className="px-2 tabular-nums whitespace-nowrap">{two(x.irrigation, 0)}</td><td className="px-2 tabular-nums whitespace-nowrap">{two(x.ift, 2)}</td><td className="px-2 tabular-nums whitespace-nowrap">{two(x.cover, 0, true)}</td><td className="px-2 tabular-nums">{x.levers ?? '—'}</td></tr>)}</tbody></table></div>
+        {r.rows.length > 300 && <p className="text-xs mt-1">{t('rk.more', { n: r.rows.length - 300 })}</p>}
+        <p className="mt-3 text-xs opacity-80 max-w-4xl">{t('rk.noteEau', { v: r.method.eau.version, b: r.method.eau.level_basis === 'initial' ? t('rk.bInit') : t('rk.bPros') })} {t('rk.noteBio', { v: r.method.bio.version, f: r.method.bio.floor, c: r.method.bio.ceiling })} {t('rk.noteData')} {(r.method.eau.status !== 'valide' || r.method.bio.status !== 'valide') && <span className="badge bg-wheat/40">{t('rk.toValidate')}</span>}</p></>}
+    </div>
+  );
+}

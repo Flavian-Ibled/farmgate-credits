@@ -1,0 +1,7 @@
+node_modules
+dist
+inputs/
+data/
+*.local
+.DS_Store
+livraison/

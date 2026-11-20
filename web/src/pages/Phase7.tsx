@@ -1,0 +1,66 @@
+// Project-owner portal, notifications, compare page.
+import { useEffect, useState } from 'react';
+import { Link, useSearchParams } from 'react-router-dom';
+import { useTranslation } from 'react-i18next';
+import { api, fmt, pct, share, STATUS_COLOR } from '../api';
+import { Tile } from '../components/Sheet';
+import { LoginForm } from './FunderPortal';
+import { FuBadge } from './FollowUps';
+import { IndIcon } from '../components/Icons';
+
+export function OwnerPortal() {
+  const { t } = useTranslation(); const [me, setMe] = useState<any>(undefined), [p, setP] = useState<any>(null), [err, setErr] = useState(''), [proj, setProj] = useState('');
+  const load = () => api('/auth/me').then(m => { setMe(m); if (m?.role === 'project_owner_user') api('/owner/portfolio').then(setP).catch(e => setErr(e.message)); }).catch(() => setMe(null));
+  useEffect(() => { load(); }, []);
+  if (me === undefined) return <p className="p-8">{t('loading')}</p>; if (!me) return <LoginForm title={t('ow.title')} onDone={load} />;
+  if (me.role !== 'project_owner_user') return <p className="p-8">{t('ow.notOwner')} <button className="underline" onClick={async () => { await api('/auth/logout', {}); setMe(null); }}>{t('adm.signout')}</button></p>;
+  if (err) return <p role="alert" className="p-8 text-red-700">{err}</p>; if (!p) return <p className="p-8">{t('loading')}</p>;
+  const farms = p.farms.filter((f: any) => !proj || f.project === proj); const s = (k: string) => p.projects.reduce((a: number, x: any) => a + (x[k] ?? 0), 0);
+  return (
+    <div className="mx-auto max-w-6xl px-4 py-6 sm:py-10">
+      <div className="flex flex-wrap items-center gap-3"><div className="mr-auto"><p className="text-xs font-bold uppercase tracking-widest text-leaf-dark">{t('ow.title')}</p><h1 className="text-2xl sm:text-4xl">{p.organization.name}</h1></div><button className="btn-ghost" onClick={async () => { await api('/auth/logout', {}); setMe(null); setP(null); }}>{t('adm.signout')}</button></div>
+      <section className="mt-5 grid grid-cols-2 lg:grid-cols-4 gap-3"><Tile value={fmt(s('farms'))} label={t('kpi.farms')} sub={`${fmt(s('sau'))} ha`} /><Tile tone="apple" value={fmt(s('re_labelled'))} label={t('kpi.labelled')} /><Tile tone="brown" value={fmt(s('measured'))} label={t('kpi.measured')} sub={t('s.followed', { n: s('followed') })} /><Tile tone="brown" value={s('sellable') ? share(s('allocated') / s('sellable')) : '—'} label={t('ow.funded')} sub={`${fmt(s('sellable') - s('allocated'))} tCO₂e ${t('fp2.stillAvail')}`} /></section>
+      <h2 className="text-xl mt-8">{t('home.projects')}</h2>
+      <div className="card mt-2 overflow-x-auto"><table className="w-full text-sm"><thead><tr className="text-left border-b border-line">{[t('f.project'), t('kpi.farms'), 'SAU', t('kpi.labelled'), t('ow.followed'), t('ow.funded'), t('adm.withdrawn'), ''].map((h, i) => <th key={i} className="px-3 py-2 font-semibold whitespace-nowrap">{h}</th>)}</tr></thead><tbody>{p.projects.map((x: any) => <tr key={x.slug} className="border-b border-line last:border-0"><td className="px-3 py-1.5 font-medium"><Link className="underline" to={`/projets/${x.slug}`}>{x.name}</Link></td><td className="px-3 tabular-nums">{x.farms}</td><td className="px-3 tabular-nums">{fmt(x.sau)}</td><td className="px-3 tabular-nums">{fmt(x.re_labelled)}</td><td className="px-3 tabular-nums">{x.followed} · {fmt(x.measured)} tCO₂e</td><td className="px-3 tabular-nums">{x.funded_pct != null ? share(x.funded_pct) : '—'}</td><td className="px-3 tabular-nums">{x.withdrawn}</td><td className="px-3"><button className="btn-ghost !py-0.5 text-xs" onClick={() => setProj(proj === x.name ? '' : x.name)}>{proj === x.name ? t('ow.allFarms') : t('ow.filter')}</button></td></tr>)}</tbody></table></div>
+      <h2 className="text-xl mt-8">{t('ow.farms')} ({farms.length})</h2><p className="text-xs opacity-75">{t('ow.private')}</p>
+      <div className="card mt-2 overflow-auto max-h-[70vh]"><table className="w-full text-sm"><thead className="sticky top-0 bg-white"><tr className="text-left border-b border-line">{[t('list.id'), t('ow.name'), t('ow.commune'), 'SAU', t('f.status'), t('kpi.labelled'), t('ow.measured'), t('s.lastDiag'), t('ow.funded')].map(h => <th key={h} className="px-3 py-2 font-semibold whitespace-nowrap">{h}</th>)}</tr></thead><tbody>{farms.map((f: any) => <tr key={f.id} className="border-b border-line last:border-0"><td className="px-3 py-1.5 font-medium"><Link className="underline" to={`/fermes/${f.id}`}>{f.id}</Link></td><td className="px-3">{f.name ?? '—'}</td><td className="px-3">{f.commune ?? '—'}{f.postal_code ? ` (${String(f.postal_code).slice(0, 2)})` : ''}</td><td className="px-3 tabular-nums">{fmt(f.sau)}</td><td className="px-3"><span className="badge text-white" style={{ background: STATUS_COLOR[f.lbc_status] ?? '#888' }}>{f.lbc_status ?? '—'}</span></td><td className="px-3 tabular-nums">{fmt(f.re_labelled)}</td><td className="px-3 tabular-nums">{f.measured != null ? <>{fmt(f.measured)} {f.followup_status && <FuBadge s={f.followup_status} />}</> : '—'}</td><td className="px-3">{f.last_diag_date ? new Date(f.last_diag_date).toLocaleDateString() : '—'}</td><td className="px-3 tabular-nums">{f.funded_pct != null ? share(f.funded_pct) : '—'}</td></tr>)}</tbody></table></div>
+    </div>
+  );
+}
+
+export function Notifications() {
+  const { t } = useTranslation(); const [d, setD] = useState<any>(null), [err, setErr] = useState('');
+  useEffect(() => { api('/me/notifications').then(x => { setD(x); if (x.unread) api('/me/notifications/read', {}).catch(() => {}); }).catch(e => setErr(e.message)); }, []);
+  return <div className="mx-auto max-w-3xl px-4 py-8"><h1 className="text-2xl sm:text-3xl">{t('no.title')}</h1>{err && <p className="mt-3">{t('no.login')}</p>}
+    {d && (d.items.length === 0 ? <p className="mt-3">{t('no.none')}</p> : <ul className="mt-3 card divide-y divide-line">{d.items.map((n: any) => <li key={n.id} className={`px-4 py-3 text-sm flex flex-wrap gap-2 items-baseline ${n.read ? '' : 'bg-mist'}`}>{!n.read && <span className="badge bg-apple text-white">{t('no.new')}</span>}<span className="flex-1">{n.link ? <Link className="underline" to={n.link}>{n.title}</Link> : n.title}</span><span className="text-xs opacity-70">{new Date(n.created_at).toLocaleString()}</span></li>)}</ul>)}</div>;
+}
+
+/** Side-by-side comparison of 2–3 farms or projects, built from the same public data as their pages. */
+export function Compare() {
+  const { t, i18n } = useTranslation(); const [sp, setSp] = useSearchParams(); const kind = sp.get('type') === 'projets' ? 'projets' : 'fermes'; const ids = (sp.get('ids') ?? '').split(',').map(s => s.trim()).filter(Boolean).slice(0, 3);
+  const [input, setInput] = useState(ids.join(', ')), [data, setData] = useState<any[]>([]), [list, setList] = useState<any[]>([]);
+  useEffect(() => { api('/public/projects').then(setList).catch(() => {}); }, []);
+  useEffect(() => { setData([]); Promise.all(ids.map(id => api(kind === 'fermes' ? `/public/farms/${id.toUpperCase()}` : `/public/projects/${id}`).then(d => ({ id, d })).catch(e => ({ id, err: e.message })))).then(setData); }, [sp.toString()]);
+  const go = (k: string, v: string) => setSp({ type: k, ids: v.split(/[\s,;]+/).filter(Boolean).slice(0, 3).join(',') });
+  const F = (x: any) => kind === 'fermes' ? { title: x.d.name ?? `${t('farm.anonymous')} ${x.d.id}`, link: `/fermes/${x.d.id}`, sub: `${x.d.project ?? ''} · ${x.d.departement ?? ''}`, sau: x.d.sau, lab: x.d.carbon.re_labelled, haYr: x.d.carbon.re_ha_yr, meas: x.d.followup?.re_total ?? null, est: x.d.followup?.end_of_project_estimate ?? null, funded: x.d.funding?.funded_pct, remaining: x.d.funding?.remaining, eau: x.d.scores?.eau?.score ?? null, bio: x.d.scores?.bio?.raw ?? null, farmer: x.d.remuneration.farmer_pct, farms: null }
+    : { title: x.d.project.name, link: `/projets/${x.d.project.slug}`, sub: x.d.project.porteur ?? '', sau: x.d.selection.scale.sau, lab: x.d.selection.carbon.re_labelled_5y, haYr: x.d.selection.carbon.re_labelled_ha_yr, meas: x.d.followup?.re_total ?? null, est: x.d.followup?.end_of_project_estimate ?? null, funded: x.d.funding?.funded_pct, remaining: x.d.funding?.remaining, eau: x.d.scores?.eau?.mean ?? null, bio: x.d.scores?.bio?.raw_mean ?? null, farmer: x.d.remuneration.farmer_pct, farms: x.d.selection.scale.farms };
+  const ok = data.filter(x => x.d); const cols = ok.map(F);
+  const rows: [string, (c: any) => string][] = [[t('kpi.farms'), (c: any) => (c.farms == null ? '—' : fmt(c.farms))], ['SAU (ha)', (c: any) => fmt(c.sau)], [t('kpi.labelled'), (c: any) => fmt(c.lab)], ['tCO₂e/ha/an', (c: any) => fmt(c.haYr, 2)], [t('kpi.measured'), (c: any) => fmt(c.meas)], [t('sl.cReest'), (c: any) => fmt(c.est)], [t('ow.funded'), (c: any) => (c.funded != null ? share(c.funded) : '—')], [t('kpi.available'), (c: any) => fmt(c.remaining)], [t('rk.eau'), (c: any) => fmt(c.eau, 0)], [`${t('rk.bio')} (${t('cp.raw')})`, (c: any) => fmt(c.bio, 1)], [t('mo.pctAgri'), (c: any) => `${fmt(c.farmer, c.farmer % 1 ? 1 : 0)} %`]].filter(([k]) => kind === 'projets' || k !== t('kpi.farms')) as any;
+  const codes = [...new Set(ok.flatMap(x => x.d.scorecards.flatMap((s: any) => s.items.filter((i: any) => i.collected).map((i: any) => i.code))))].filter(code => ok.filter(x => x.d.scorecards.some((s: any) => s.items.some((i: any) => i.code === code && i.collected))).length >= 2);
+  const item = (x: any, code: string) => x.d.scorecards.flatMap((s: any) => s.items).find((i: any) => i.code === code && i.collected);
+  return (
+    <div className="mx-auto max-w-6xl px-4 py-6 sm:py-10"><h1 className="text-2xl sm:text-3xl">{t('cp.title')}</h1><p className="text-sm mt-1">{t('cp.lead')}</p>
+      <form className="card p-4 mt-3 flex flex-wrap items-end gap-3" onSubmit={e => { e.preventDefault(); go(kind, input); }}>
+        <label className="text-sm font-medium">{t('cp.what')}<select className="block mt-1 border border-line rounded px-2 py-1 text-sm bg-white" value={kind} onChange={e => { setInput(''); setSp({ type: e.target.value, ids: '' }); }}><option value="fermes">{t('kpi.farms')}</option><option value="projets">{t('home.projects').toLowerCase()}</option></select></label>
+        {kind === 'fermes' ? <label className="text-sm font-medium flex-1 min-w-56">{t('cp.ids')}<input className="block mt-1 w-full border border-line rounded px-2 py-1 text-sm" placeholder="CVL3-155, CVL3-195, CVL3-078" value={input} onChange={e => setInput(e.target.value)} /></label>
+          : <div className="flex-1 min-w-56 text-sm"><div className="font-medium">{t('cp.pick')}</div><div className="mt-1 flex flex-wrap gap-1 max-h-28 overflow-auto">{list.map(p => { const on = ids.includes(p.slug); return <button type="button" key={p.slug} aria-pressed={on} onClick={() => go('projets', (on ? ids.filter(i => i !== p.slug) : [...ids, p.slug]).join(','))} className={`badge border ${on ? 'bg-soil text-white border-soil' : 'bg-white border-line'}`}>{p.name}</button>; })}</div></div>}
+        {kind === 'fermes' && <button className="btn">{t('cp.go')}</button>}</form>
+      {data.filter(x => x.err).map(x => <p key={x.id} role="alert" className="text-sm text-red-700 mt-2">{x.id} : {x.err}</p>)}
+      {ok.length >= 2 ? <><div className="card mt-4 overflow-x-auto"><table className="w-full text-sm"><caption className="sr-only">{t('cp.title')}</caption><thead><tr className="border-b border-line"><th className="px-3 py-2 w-1/4" />{cols.map(c => <th key={c.link} className="px-3 py-2 text-left"><Link className="underline text-soil font-bold" to={c.link}>{c.title}</Link><span className="block text-xs font-normal opacity-75">{c.sub}</span></th>)}</tr></thead>
+          <tbody>{rows.map(([k, f]) => <tr key={k} className="border-b border-line last:border-0"><th scope="row" className="px-3 py-1.5 text-left font-medium">{k}</th>{cols.map(c => <td key={c.link} className="px-3 tabular-nums font-semibold">{f(c)}</td>)}</tr>)}</tbody></table></div>
+        <h2 className="text-xl mt-8">{t('s.cob')}</h2><p className="text-xs opacity-75">{t('cp.cobNote')}</p>
+        <div className="card mt-2 overflow-x-auto"><table className="w-full text-sm"><thead><tr className="border-b border-line text-left"><th className="px-3 py-2">{t('s.indicator')}</th>{cols.map(c => <th key={c.link} className="px-3 py-2">{c.title}</th>)}</tr></thead><tbody>{codes.length === 0 && <tr><td className="px-3 py-3" colSpan={cols.length + 1}>{t('cp.noCommon')}</td></tr>}{codes.map(code => { const ref = ok.map(x => item(x, code)).find(Boolean); const sh = ref.unit === 'part de SAU'; const f = (v: number | null) => (v == null ? '—' : sh ? share(v, 0) : fmt(v, Math.abs(v) < 100 ? 2 : 0)); return <tr key={code} className="border-b border-line last:border-0"><th scope="row" className="px-3 py-1.5 text-left font-medium"><IndIcon code={code} size={20} /> {i18n.language === 'en' ? ref.label_en : ref.label_fr} <span className="text-[11px] opacity-60 font-normal">{sh ? '%' : ref.unit}</span></th>{ok.map(x => { const i = item(x, code); return <td key={x.id} className="px-3 tabular-nums">{i ? <>{f(i.initial)} → {f(i.prospectif)} <strong className="ml-1">{pct(i.evolution)}</strong></> : '—'}</td>; })}</tr>; })}</tbody></table></div></>
+        : <p className="mt-4 text-sm">{t('cp.need')}</p>}
+    </div>
+  );
+}

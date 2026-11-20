@@ -1,0 +1,39 @@
+@import "tailwindcss";
+@import "leaflet/dist/leaflet.css";
+/* Carbone Farmers charter ("0 - Couleurs charte graphique"): vert foncé #1e4414, vert pomme #529a38, marron #885104,
+   gris foncé #404040, fond #F8FDF5, jaune #DFAD0B, typeface Poppins. Buttons use #377E25 (charter gradient) for AA contrast. */
+@font-face { font-family: "Poppins"; src: url("/brand/Poppins-Regular.ttf") format("truetype"); font-weight: 400; font-display: swap; }
+@font-face { font-family: "Poppins"; src: url("/brand/Poppins-Bold.ttf") format("truetype"); font-weight: 700; font-display: swap; }
+@theme {
+  --color-soil: #1e4414; --color-ink: #404040; --color-leaf: #377E25; --color-leaf-dark: #275B1A; --color-apple: #529a38; --color-brown: #885104;
+  --color-wheat: #EFBA13; --color-cream: #F8FDF5; --color-line: #d1e3c7; --color-mist: #e9f3e3;
+  --font-serif: "Poppins", ui-sans-serif, system-ui, sans-serif;
+  --font-sans: "Poppins", ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+}
+body { @apply bg-cream text-ink font-sans antialiased; }
+h1, h2, h3 { @apply font-bold text-soil; letter-spacing: -0.01em; }
+:focus-visible { outline: 3px solid var(--color-wheat); outline-offset: 2px; }
+.card { @apply bg-white border border-line rounded-2xl; box-shadow: 0 1px 2px rgba(30,68,20,.05); }
+.btn { @apply inline-flex items-center justify-center gap-2 rounded-lg px-4 py-2 text-sm font-semibold bg-leaf text-white hover:bg-leaf-dark disabled:opacity-50; }
+.btn-ghost { @apply inline-flex items-center gap-2 rounded-lg px-3 py-1.5 text-sm font-medium border border-line bg-white hover:bg-cream; }
+.badge { @apply inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium; }
+.fg-cluster { background: var(--color-leaf); color: #fff; border-radius: 9999px; display: flex; align-items: center; justify-content: center; font-weight: 700; font-size: 12px; border: 3px solid rgba(255,255,255,.85); box-shadow: 0 1px 4px rgba(0,0,0,.3); }
+/* Farm sheet as slides (16:9), one slide per PDF page */
+.slide { position: relative; background: #F8FDF5; border: 3px solid #b2d1a3; border-radius: 8px; padding: 20px 20px 44px; margin-bottom: 16px; }
+.slide { display: flex; flex-direction: column; }
+.slide-body { margin-top: 18px; flex: 1; display: flex; flex-direction: column; }
+.slide-body > * { flex: 1; }
+@media (min-width: 1024px) { .slide { padding: 28px 40px 48px; min-height: 620px; } }
+@page slides { size: 338.67mm 190.5mm; margin: 0; }
+@media print {
+  html:has(.slides) { font-size: 15.5px !important; }
+  .slides { page: slides; }
+  .slides { padding: 0 !important; margin: 0 !important; }
+  .slide { width: 338.67mm; height: 187mm; min-height: 0; box-sizing: border-box; margin: 0; border-radius: 0; border-width: 2.5mm; padding: 9mm 13mm 12mm; overflow: hidden; break-after: page; break-inside: avoid; }
+  .slide:last-of-type { break-after: auto; }
+  .slide-body { margin-top: 5mm; }
+}
+.fg-crosshair, .fg-crosshair .leaflet-grab, .fg-crosshair .leaflet-interactive { cursor: crosshair !important; }
+@page { size: A4; margin: 10mm; }
+@media print { article { max-width: 100% !important; width: 100% !important; box-sizing: border-box; padding: 0 4mm 0 0 !important; } #root > div > div:first-child { padding-right: 4mm !important; } html { font-size: 10.5px; } body { background: #fff; } .card { padding: 10px !important; } section { margin-top: 12px !important; } .card { box-shadow: none; } * { -webkit-print-color-adjust: exact; print-color-adjust: exact; } }
+@media (prefers-reduced-motion: reduce) { * { transition: none !important; animation: none !important; } }
