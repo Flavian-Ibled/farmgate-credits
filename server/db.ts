@@ -26,24 +26,22 @@ export interface Db {
 
 export async function openDb(opts: { memory?: boolean } = {}): Promise<Db> {
   (await import('./scores.ts')).resetScoreCache();
+  // Online (Supabase / any Postgres): set DATABASE_URL. Locally and in tests: embedded PGlite, as before.
+  if (!opts.memory && process.env.DATABASE_URL) return openPg(process.env.DATABASE_URL);
+  // tests against a real Postgres (same engine as Supabase): FG_TEST_PG_URL=… npm run test:pg — wipes that database's public schema
+  if (opts.memory && process.env.FG_TEST_PG_URL) return openPg(process.env.FG_TEST_PG_URL, { wipe: true });
   let blurSecret = 'test-secret';
   if (!opts.memory) {
     mkdirSync(DATA_DIR, { recursive: true });
     const f = join(DATA_DIR, 'blur-secret.txt');
-    if (!existsSync(f)) writeFileSync(f, randomBytes(32).toString('hex'), { mode: 0o600 });
-    blurSecret = readFileSync(f, 'utf8').trim();
+    if (process.env.FG_BLUR_SECRET) blurSecret = process.env.FG_BLUR_SECRET.trim();
+    else {
+      if (!existsSync(f)) writeFileSync(f, randomBytes(32).toString('hex'), { mode: 0o600 });
+      blurSecret = readFileSync(f, 'utf8').trim();
+    }
   }
   const pg = opts.memory ? new PGlite() : new PGlite(join(DATA_DIR, 'pg'));
-  const has = await pg.query<{ n: number }>(`select count(*)::int n from pg_tables where schemaname='public' and tablename='farms'`);
-  if (!has.rows[0].n) {
-    await pg.exec(readFileSync(join(here, '../db/schema.sql'), 'utf8'));
-    await seedReference(pg as any);
-  }
-  for (const m of MIGRATIONS) await pg.exec(m);
-  // indicators measured outside the Data Master (selection workbooks): added to the catalogue once
-  for (const [k, e] of EXTRA_INDICATORS.entries()) await pg.query(`insert into indicators(code,category,label_fr,label_en,unit,aggregation,scope,collected,catalogue_source,sort,threshold_red,threshold_green,why_fr) values($1,$2,$3,$4,$5,'wmean','GC',true,'selection_workbook',$6,$7,$8,$9) on conflict(code) do nothing`, [e.code, e.category, e.label_fr, e.label_en, e.unit, 100 + k, e.red ?? null, e.green ?? null, e.why_fr ?? null]);
-  // water score v2 (initial state + evolution), added once; later versions are created from the admin
-  await pg.query(`insert into score_configs(score,version,config,author) select 'eau',2,$1::jsonb,'demande product owner 2026-11-15' where not exists (select 1 from score_configs where score='eau' and version>=2)`, [JSON.stringify(WATER_CONFIG_V2)]);
+  await bootstrap(pg as any);
   const num = (x: any) => (x == null ? '' : String(Number(x)));
   return {
     owner: pg as any, blurSecret,
@@ -57,8 +55,64 @@ export async function openDb(opts: { memory?: boolean } = {}): Promise<Db> {
   };
 }
 
+/** Schema creation (first start only), idempotent migrations and reference data. Same code for PGlite and Postgres. */
+async function bootstrap(q: Q) {
+  const has = await q.query<{ n: number }>(`select count(*)::int n from pg_tables where schemaname='public' and tablename='farms'`);
+  if (!has.rows[0].n) {
+    // roles are cluster-wide: fg_app may already exist (Supabase project, shared test server) → create it idempotently first
+    await q.exec(`do $$ begin create role fg_app nologin; exception when duplicate_object then null; end $$;`);
+    await q.exec(readFileSync(join(here, '../db/schema.sql'), 'utf8').replace('create role fg_app nologin;', ''));
+    await seedReference(q);
+  }
+  // the connecting user must be allowed to "set role fg_app" (implicit for PGlite's superuser, explicit on Supabase)
+  await q.exec(`do $$ begin execute format('grant fg_app to %I', current_user); exception when others then null; end $$;`);
+  for (const m of MIGRATIONS) await q.exec(m);
+  // indicators measured outside the Data Master (selection workbooks): added to the catalogue once
+  for (const [k, e] of EXTRA_INDICATORS.entries()) await q.query(`insert into indicators(code,category,label_fr,label_en,unit,aggregation,scope,collected,catalogue_source,sort,threshold_red,threshold_green,why_fr) values($1,$2,$3,$4,$5,'wmean','GC',true,'selection_workbook',$6,$7,$8,$9) on conflict(code) do nothing`, [e.code, e.category, e.label_fr, e.label_en, e.unit, 100 + k, e.red ?? null, e.green ?? null, e.why_fr ?? null]);
+  // water score v2 (initial state + evolution), added once; later versions are created from the admin
+  await q.query(`insert into score_configs(score,version,config,author) select 'eau',2,$1::jsonb,'demande product owner 2026-11-15' where not exists (select 1 from score_configs where score='eau' and version>=2)`, [JSON.stringify(WATER_CONFIG_V2)]);
+}
+
+/** Online database (Supabase). Use the "Session pooler" connection string (IPv4, port 5432). */
+async function openPg(url: string, o: { wipe?: boolean } = {}): Promise<Db> {
+  const { default: pg } = await import('pg');
+  // align value types on PGlite so the same code gives the same results: int8 → number, date → Date at UTC midnight (numeric stays a string in both)
+  pg.types.setTypeParser(20, v => Number(v));
+  pg.types.setTypeParser(1082, v => new Date(v + 'T00:00:00Z'));
+  const local = /localhost|127\.0\.0\.1/.test(url);
+  const pool = new pg.Pool({ connectionString: url, max: Number(process.env.PG_POOL_MAX ?? 5), ssl: local ? undefined : { rejectUnauthorized: false } });
+  if (o.wipe) await pool.query('drop schema if exists public cascade; create schema public;');
+  const blurSecret = o.wipe ? 'test-secret' : (process.env.FG_BLUR_SECRET ?? '').trim();
+  if (!blurSecret) throw new Error('FG_BLUR_SECRET manquant : obligatoire avec DATABASE_URL (sinon les positions floutées changeraient à chaque démarrage).');
+  const wrap = (c: { query: (s: string, p?: any[]) => Promise<any> }): Q => ({ query: (s, p) => c.query(s, p) as any, exec: s => c.query(s) });
+  const tx = async <T>(fn: (q: Q) => Promise<T>, before?: (q: Q) => Promise<void>) => {
+    const c = await pool.connect();
+    try { await c.query('begin'); const q = wrap(c); if (before) await before(q); const r = await fn(q); await c.query('commit'); return r; }
+    catch (e) { await c.query('rollback').catch(() => {}); throw e; }
+    finally { c.release(); }
+  };
+  await tx(bootstrap);
+  const num = (x: any) => (x == null ? '' : String(Number(x)));
+  return {
+    owner: wrap(pool), blurSecret,
+    tx: fn => tx(fn),
+    as: (ctx, fn) => tx(fn, async q => {
+      await q.exec('set local role fg_app');
+      await q.query(`select set_config('app.role',$1,true), set_config('app.org',$2,true), set_config('app.uid',$3,true)`, [ctx.role, num(ctx.org), num(ctx.uid)]);
+    }),
+    close: () => pool.end(),
+  };
+}
+
 /** Idempotent statements run at every start (keep in sync with db/schema.sql). */
 const MIGRATIONS = [
+  // Supabase: its auto-generated REST API (roles anon / authenticated) must never reach these tables — the app talks to Postgres directly
+  `do $$ begin if exists (select 1 from pg_roles where rolname='anon') then
+     revoke all on all tables in schema public from anon, authenticated; revoke all on all sequences in schema public from anon, authenticated;
+     revoke all on all functions in schema public from anon, authenticated; revoke usage on schema public from anon, authenticated;
+     alter default privileges in schema public revoke all on tables from anon, authenticated;
+     alter default privileges in schema public revoke all on sequences from anon, authenticated;
+     alter default privileges in schema public revoke all on functions from anon, authenticated; end if; end $$;`,
   // phase 8: opt-in public page of a funder, and editorial settings of the public dashboard
   `alter table organizations add column if not exists public_slug text; alter table organizations add column if not exists public_page_enabled boolean not null default false;
    create unique index if not exists organizations_public_slug on organizations(public_slug) where public_slug is not null;

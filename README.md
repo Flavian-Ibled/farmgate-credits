@@ -12,6 +12,10 @@ Node.js lives in `~/.local/share/nodejs/current/bin` (not on the PATH by default
     npx tsx server/cli.ts create-admin <email>   # dev admin; credentials written to the local data folder
     npm run db:reset       # delete the local database
 
+## En ligne / à deux
+- Mise en ligne (Supabase + Railway) : `docs/DEPLOIEMENT.md`
+- Travailler à deux avec Claude Code : `docs/TRAVAILLER-A-DEUX.md`
+
 ## Where things are
 - `db/schema.sql` — full schema + row-level security policies
 - `shared/` — pure calculation code: `aggregate.ts` (4B rules), `scores.ts` (4C), `catalogue.ts`

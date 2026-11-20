@@ -9,6 +9,13 @@ Work phase by phase; after each phase run the app and the tests, then report wha
 
 Phase 8 built: public dashboard /impact, methodology /methodologie (live score settings), open data /donnees (CSV/Excel, non-identifying, respects the co-benefit display choices), funder opt-in page /contribution/:slug and iframe widget /widget/:slug (`server/phase8.ts`). Also built after Phase 7: funder management in the admin (edit, users, % attribution, shared selections: `server/funderAdmin.ts`), map ungroup and multi-selection (click, zone, list), co-benefit icons (`web/src/components/Icons.tsx`). Next: Phase 9 with the IT department. Also built earlier: farm photos and farmer identity for admins (`server/media.ts`), direct purchase of remaining credits (`server/shop.ts`, `server/payments.ts`, page `/acheter`; bank transfer only, online payment to be connected — see README).
 
+## Git, base en ligne, travail à deux (since 2026-11-19)
+- Repo GitHub; two developers (Flavian, Yannick) each with Claude Code. Never commit to `main`: branch `<name>/<topic>`, PR, green CI. See `docs/TRAVAILLER-A-DEUX.md`.
+- Database: local PGlite by default. With `DATABASE_URL` (Supabase, Paris) the same code runs on Postgres (`server/db.ts` → `openPg`). `FG_BLUR_SECRET` required online and must never change.
+- Schema changes: append an idempotent statement to `MIGRATIONS` in `server/db.ts` AND mirror it in `db/schema.sql`; never edit a merged migration.
+- `npm run test:pg` with `FG_TEST_PG_URL` runs the suite on a real Postgres (CI does it on every PR).
+- Production: `Dockerfile` (Chromium for PDFs), Railway EU, see `docs/DEPLOIEMENT.md`. Never run imports/CLI against the online database without the owner's go (rule 6).
+
 ## Run
 Node.js is not on the PATH on this Mac:
 

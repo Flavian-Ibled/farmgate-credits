@@ -5,3 +5,7 @@ data/
 *.local
 .DS_Store
 livraison/
+.env
+.env.*
+!.env.example
+*.pem

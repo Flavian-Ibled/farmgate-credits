@@ -1,0 +1,28 @@
+name: CI
+on:
+  pull_request:
+  push:
+    branches: [main]
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env: { POSTGRES_PASSWORD: pw }
+        ports: ['5432:5432']
+        options: --health-cmd pg_isready --health-interval 5s --health-retries 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version-file: .nvmrc, cache: npm }
+      - run: npm install --no-audit --no-fund   # package-lock.json is refreshed by the next local npm install
+      - run: npx tsc --noEmit
+      - name: Tests (PGlite, comme en local)
+        run: npm test
+      - name: Tests (Postgres, comme Supabase — utilisateur non superutilisateur)
+        run: |
+          PGPASSWORD=pw psql -h localhost -U postgres -c "create role sbuser login password 'pw' createrole; create database fg owner sbuser;"
+          PGPASSWORD=pw psql -h localhost -U postgres -d fg -c "alter schema public owner to sbuser;"
+          FG_TEST_PG_URL=postgres://sbuser:pw@localhost:5432/fg npm run test:pg
+      - run: npx vite build
